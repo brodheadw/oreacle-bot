@@ -51,7 +51,8 @@ def format_comment(item, en, zh, verdict):
 def run_once():
     logging.info("Starting monitoring cycle...")
     store = Store()
-    translator = get_translator()
+    if not USE_LLM:
+        translator = get_translator()
     
     logging.info("Connecting to Manifold Markets...")
     mani = ManifoldClient(MANI_KEY)
@@ -69,12 +70,24 @@ def run_once():
         logging.error(f"CNINFO fetch failed: {e}")
     
     logging.info("Fetching from SZSE...")
+    szse_items = []
     try:
         szse_items = fetch_szse(KEYWORDS_ZH)
         items += szse_items
         logging.info(f"SZSE: Found {len(szse_items)} items")
     except Exception as e:
         logging.error(f"SZSE fetch failed: {e}")
+        # Retry SZSE with smaller query set after delay
+        logging.info("Retrying SZSE with reduced keyword set...")
+        time.sleep(5)
+        try:
+            # Core keywords only for retry
+            core_keywords = ["枧下窝", "宜春", "采矿许可证", "恢复生产"]
+            szse_retry = fetch_szse(core_keywords)
+            items += szse_retry
+            logging.info(f"SZSE retry: Found {len(szse_retry)} items")
+        except Exception as retry_e:
+            logging.error(f"SZSE retry also failed: {retry_e}")
     
     logging.info("Fetching from Jiangxi...")
     try:
@@ -100,6 +113,13 @@ def run_once():
         url = it.get("url") or ""
         
         logging.info(f"Processing {it['source']} item: {zh_text[:100]}...")
+        
+        # Enhanced relevance check before expensive LLM processing
+        if not enhanced_relevance_check(it, PHRASEBOOK):
+            logging.debug(f"Skipping item - failed relevance filter: {zh_text[:50]}")
+            # Still mark as seen to avoid reprocessing
+            store.add(SeenItem(it["source"], it["id"], it.get("url") or "", it.get("title") or "", int(time.time())))
+            continue
         
         try:
             if USE_LLM:
