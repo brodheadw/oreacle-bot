@@ -27,8 +27,20 @@ The bot uses GPT-4o-mini to analyze Chinese regulatory documents in real-time, e
    ```
 
 3. **Run the monitor**
+
+   You can run the bot **either locally or in GitHub Actions** (or both simultaneously):
+   
+   **Local (Continuous):**
    ```bash
    source .env && python src/monitor.py
+   # Runs forever with 15-minute cycles until stopped
+   ```
+   
+   **GitHub Actions (Cloud Automation):**
+   ```bash
+   # Set up repository secrets, then push to GitHub
+   # Automatically runs every 15 minutes in the cloud
+   # See GITHUB_ACTIONS_SETUP.md for complete setup guide
    ```
 
 ## Configuration
@@ -142,7 +154,8 @@ Raw Document → Boolean Prefilter → LLM Extraction → Decision Gates → Act
 - `src/client.py` - Manifold Markets API client
 
 ### Main Application
-- `src/monitor.py` - Main monitoring loop with LLM integration
+- `src/monitor.py` - Main monitoring loop with LLM integration (local continuous)
+- `src/monitor_single.py` - Single-cycle version for GitHub Actions (cloud)
 
 ## Expected Output Examples
 
@@ -196,6 +209,53 @@ Terms Found:
 [INFO] LLM Analysis - Proposed: YES_CONDITION, Final: YES_CONDITION, Confidence: 0.85
 [INFO] Posted LLM comment for cninfo item_12345
 ```
+
+## Deployment Options
+
+### Local vs GitHub Actions
+
+You can run the bot in three ways:
+
+1. **Local Only**: Run `python src/monitor.py` on your machine
+   - Persistent SQLite database in `./tmp/oreacle.db`
+   - Perfect deduplication across runs
+   - Requires your machine to stay online
+
+2. **GitHub Actions Only**: Automated cloud execution every 15 minutes
+   - Database resets each run (ephemeral runners)
+   - Still works perfectly for regulatory monitoring
+   - No machine uptime requirements
+
+3. **Both Simultaneously**: Local + GitHub Actions running in parallel
+   - Redundancy ensures no missed announcements
+   - Each maintains its own deduplication state
+   - Maximum reliability
+
+### Why Non-Persistent Database Works Fine
+
+**GitHub Actions resets the SQLite database each run, but this doesn't cause problems because:**
+
+1. **Regulatory announcements are rare** - New CATL mining documents appear maybe 1-10 times per month
+2. **Quick re-analysis is cheap** - GPT-4o-mini costs ~$0.01 per document, so re-analyzing the same document a few times costs pennies
+3. **Manifold prevents spam** - If you post the same comment twice, Manifold will reject duplicates
+4. **Time-based filtering** - Most regulatory sources show recent items first, so old items naturally age out
+5. **Short analysis window** - Each run only takes 2-3 minutes, so the overlap window is minimal
+
+**In practice:** A new regulatory announcement might get analyzed 2-3 times total before it's no longer in the "recent items" feed from the sources. This costs ~$0.03 instead of ~$0.01 - negligible for the reliability benefits of cloud automation.
+
+### Production Recommendation
+
+**Use GitHub Actions for production** because:
+- ✅ 24/7 uptime without your laptop
+- ✅ Exact 15-minute intervals 
+- ✅ Built-in monitoring and logs
+- ✅ Free hosting (GitHub Actions)
+- ✅ Redundant with occasional re-analysis (~$0.02 extra cost per document)
+
+**Use Local for development** because:
+- ✅ Perfect deduplication
+- ✅ Immediate feedback and debugging
+- ✅ No CI/CD setup required
 
 ## Relevant Links
 
