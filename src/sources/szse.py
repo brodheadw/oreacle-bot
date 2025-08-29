@@ -49,10 +49,13 @@ def fetch_szse(keywords: List[str], days_back: int = 90) -> List[Dict]:
                 data = r.json()
                 logging.debug(f"SZSE JSON response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
             except ValueError as e:
-                # Check if it's HTML (maintenance page)
+                # Check if it's HTML (maintenance page or server error)
                 if r.text.strip().startswith('<!DOCTYPE html>') or r.text.strip().startswith('<html'):
-                    logging.warning(f"SZSE returned HTML page for keyword '{kw}' - possibly blocked or maintenance")
-                    logging.debug(f"First 500 chars: {r.text[:500]}")
+                    if '50x' in r.text or 'maintain' in r.text.lower():
+                        logging.warning(f"SZSE API appears to be down (50x error or maintenance) for keyword '{kw}'")
+                    else:
+                        logging.warning(f"SZSE returned HTML page for keyword '{kw}' - possibly blocked")
+                    logging.debug(f"First 200 chars: {r.text[:200]}")
                 else:
                     logging.warning(f"SZSE returned invalid JSON for keyword '{kw}': {r.text[:100]}...")
                 continue
