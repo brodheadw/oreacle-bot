@@ -1,9 +1,6 @@
 # src/decision.py
 import os
-try:
-    from .models import Extraction
-except ImportError:
-    from models import Extraction
+from .models import Extraction
 
 MIN_CONF = float(os.getenv("OREACLE_MIN_CONFIDENCE", "0.75"))
 
