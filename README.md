@@ -28,7 +28,7 @@ The bot automatically translates Chinese documents, classifies their relevance (
 
 3. **Run the monitor**
    ```bash
-   cd src && python monitor.py
+   source .env && python src/monitor.py
    ```
 
 ## Configuration

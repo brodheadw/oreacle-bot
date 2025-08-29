@@ -1,22 +1,31 @@
 yes_zh:
-  - 采矿许可证恢复
+  # resumption/approval verbs
   - 恢复生产
-  - 恢复开采  
-  - 核发采矿许可证
+  - 恢复开采
+  - 复工复产
+  - 恢复采掘
+  - 生产重启
+  - 批准恢复
+  - 批复同意
+  # license actions
   - 采矿许可证延续
   - 采矿许可证续期
   - 采矿许可证换发
-  - 准予恢复生产
-  - 批准恢复开采
-  - 同意恢复生产
+  - 采矿许可证延长
+  - 延续登记
+  - 变更登记
+  - 换证
+  - 补办
+  - 核发采矿许可证
+  - 颁发采矿许可证
+  - 发放采矿许可证
 
 yes_en:
-  - mining license renewed
   - resume production
-  - resumption of mining
-  - mining permit granted
-  - license renewal approved
-  - permit renewal
+  - resume mining
+  - mining license renewed
+  - renewal approved
+  - license extension granted
   - production resumption
   - restart mining
   - approved to resume
@@ -24,13 +33,12 @@ yes_en:
 no_zh:
   - 仅限勘探
   - 探矿权
-  - 暂停生产
-  - 停止生产
-  - 责令停产
   - 暂停开采
-  - 停止开采
+  - 停产整顿
+  - 暂停生产
+  - 延期审查
+  - 注销采矿许可证
   - 吊销采矿许可证
-  - 撤销采矿许可证
 
 no_en:
   - exploration only
@@ -44,20 +52,54 @@ no_en:
 
 mine_aliases:
   - 枧下窝
+  - 涧下窝               # occasional variant
+  - 枧下窝矿
+  - 枧下窝矿区
+  - 枧下窝锂云母矿
+  - 宜春枧下窝
+  - 陶瓷土（含锂）
+  - 含锂瓷土
+  - 锂云母矿
   - Jianxiawo
   - Jianxia Wo
-  - 宜春市袁州区枧下窝
-  - 宜春枧下窝
-  - 袁州区枧下窝
-  - 宜春锂矿
-  - Yichun lithium
-  - CATL Yichun
-  - 宁德时代宜春
+  # fuzzy/typo variants seen in media
+  - 建夏沃
+  - 建夏窝
 
-authorities:
+company_aliases:
+  - 宁德时代
+  - 宁德时代新能源科技股份有限公司
+  - 300750
+  - 宜春时代新能源矿业有限公司
+  - 宜春时代资源有限公司
+  - 宜春市矿业有限责任公司
+  - CATL
+  - Contemporary Amperex
+
+geo_aliases:
+  - 宜春
+  - 袁州
+  - 袁州区
+  - 宜丰
+  - 奉新
+  - 上富镇
+  - 花桥乡
+  - Yichun
+  - Yuanzhou
+
+regulators:
   - 江西省自然资源厅
   - 宜春市自然资源局
   - 袁州区自然资源局
-  - 江西省应急管理厅
+  - 宜丰县自然资源局
+  - 奉新县自然资源局
   - Jiangxi Natural Resources
   - Yichun Natural Resources
+
+# Traditional/overseas media variants
+traditional_zh:
+  - 採礦許可證
+  - 復產
+  - 開採
+  - 續期
+  - 換發

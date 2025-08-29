@@ -3,7 +3,10 @@ import json
 import os
 from typing import Dict, Any
 from openai import OpenAI
-from .models import Extraction
+try:
+    from .models import Extraction
+except ImportError:
+    from models import Extraction
 
 CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = os.getenv("OREACLE_MODEL", "gpt-4o-mini")  # or "gpt-4.1"

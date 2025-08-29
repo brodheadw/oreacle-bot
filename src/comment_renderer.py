@@ -1,5 +1,8 @@
 # src/comment_renderer.py
-from .models import Extraction
+try:
+    from .models import Extraction
+except ImportError:
+    from models import Extraction
 
 def render_comment(x: Extraction, final_verdict: str) -> str:
     """Render a comprehensive comment for Manifold Markets"""
