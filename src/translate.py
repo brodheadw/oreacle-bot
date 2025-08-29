@@ -41,9 +41,9 @@ class GoogleTranslator(Translator):
             logging.warning(f"Google translate failed: {e}")
             return text
 
-    def get_translator() -> Translator:
-        if DEEPL_KEY:
-            return DeepLTranslator()
-        if GOOGLE_KEY:
-            return GoogleTranslator()
-        return Translator()
+def get_translator() -> Translator:
+    if DEEPL_KEY:
+        return DeepLTranslator()
+    if GOOGLE_KEY:
+        return GoogleTranslator()
+    return Translator()

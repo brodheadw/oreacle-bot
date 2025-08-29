@@ -1,5 +1,4 @@
 # src/storage.py
-
 from __future__ import annotations
 import sqlite3, os, time
 from dataclasses import dataclass
@@ -47,5 +46,4 @@ class Store:
         (item.source, item.item_id, item.url, item.title, item.ts)
         )
         self.con.commit()
-    
     

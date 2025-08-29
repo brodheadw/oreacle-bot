@@ -33,20 +33,51 @@ def format_comment(item, en, zh, verdict):
     return head + body + foot
 
 def run_once():
+    logging.info("Starting monitoring cycle...")
     store = Store()
     translator = get_translator()
+    
+    logging.info("Connecting to Manifold Markets...")
     mani = ManifoldClient(MANI_KEY)
     market = mani.get_market_by_slug(MARKET_SLUG)
     cid = market["id"]
+    logging.info(f"Connected to market: {market.get('question', 'Unknown')}")
 
     items = []
-    items += fetch_cninfo(KEYWORDS_ZH)
-    items += fetch_szse(KEYWORDS_ZH)
-    items += fetch_jiangxi()
+    logging.info("Fetching from CNINFO...")
+    try:
+        cninfo_items = fetch_cninfo(KEYWORDS_ZH)
+        items += cninfo_items
+        logging.info(f"CNINFO: Found {len(cninfo_items)} items")
+    except Exception as e:
+        logging.error(f"CNINFO fetch failed: {e}")
+    
+    logging.info("Fetching from SZSE...")
+    try:
+        szse_items = fetch_szse(KEYWORDS_ZH)
+        items += szse_items
+        logging.info(f"SZSE: Found {len(szse_items)} items")
+    except Exception as e:
+        logging.error(f"SZSE fetch failed: {e}")
+    
+    logging.info("Fetching from Jiangxi...")
+    try:
+        jiangxi_items = fetch_jiangxi()
+        items += jiangxi_items
+        logging.info(f"Jiangxi: Found {len(jiangxi_items)} items")
+    except Exception as e:
+        logging.error(f"Jiangxi fetch failed: {e}")
 
     # Dedup & process
     new_items = [i for i in items if not store.has(i["source"], i["id"])]
-    logging.info(f"Scanned {len(items)} items, new: {len(new_items)}")
+    logging.info(f"Total: {len(items)} items, new: {len(new_items)}")
+    
+    if new_items:
+        logging.info("New items found:")
+        for item in new_items:
+            logging.info(f"  {item['source']}: {item.get('title', 'No title')[:100]}")
+    else:
+        logging.info("No new items to process")
 
     for it in new_items:
         zh_text = (it.get("title") or "")
@@ -78,11 +109,18 @@ def run_once():
         store.add(SeenItem(it["source"], it["id"], it.get("url") or "", it.get("title") or "", int(time.time())))
 
 def main():
+    logging.info(f"Oreacle Bot starting up - monitoring every {CHECK_INTERVAL_SEC} seconds")
+    logging.info(f"Target market: {MARKET_SLUG}")
+    logging.info(f"Comment only mode: {COMMENT_ONLY}")
+    logging.info(f"Keywords: {KEYWORDS_ZH}")
+    
     while True:
         try:
             run_once()
         except Exception as e:
             logging.exception(f"run_once error: {e}")
+        
+        logging.info(f"Sleeping for {CHECK_INTERVAL_SEC} seconds until next cycle...")
         time.sleep(CHECK_INTERVAL_SEC)
 
 if __name__ == "__main__":

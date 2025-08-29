@@ -13,35 +13,58 @@ SZSE_HEADERS = {
 }
 
 def fetch_szse(keywords: List[str], days_back: int = 90) -> List[Dict]:
-    import datetime as dt
+    import datetime as dt, logging
     start = (dt.datetime.utcnow() - dt.timedelta(days=days_back)).strftime("%Y-%m-%d")
     end = dt.datetime.utcnow().strftime("%Y-%m-%d")
 
     results = []
     for kw in keywords:
-        body = {
-            "seDate": f"{start}~{end}",
-            "channelCode": ["listedNotice_disc"],
-            "pageSize": 30,
-            "pageNum": 1,
-            "keyword": kw,
-            "plateCode": ["szse"],
-            "secCode": ["300750"],
-        }
-    r = requests.post(f"{SZSE_URL}?random={random.random()}", headers=SZSE_HEADERS, json=body, timeout=20)
-    r.raise_for_status(); data = r.json()
-    for a in data.get("data", {}).get("announcements", []):
-        url = a.get("attachPath")
-    if url and not url.startswith("http"):
-        url = f"http://disc.static.szse.cn/download/{url.lstrip('/')}"
-    results.append({
-        "source": "szse",
-        "id": a.get("id") or a.get("seqId") or a.get("attachPath"),
-        "title": a.get("title"),
-        "time": a.get("publishTime"),
-        "url": url,
-        "raw": a,
-        "keyword": kw,
-    })
-    time.sleep(0.8)
+        try:
+            body = {
+                "seDate": f"{start}~{end}",
+                "channelCode": ["listedNotice_disc"],
+                "pageSize": 30,
+                "pageNum": 1,
+                "keyword": kw,
+                "plateCode": ["szse"],
+                "secCode": ["300750"],
+            }
+            
+            r = requests.post(f"{SZSE_URL}?random={random.random()}", headers=SZSE_HEADERS, json=body, timeout=20)
+            r.raise_for_status()
+            
+            # Check if response has content before parsing JSON
+            if not r.text.strip():
+                logging.warning(f"SZSE returned empty response for keyword: {kw}")
+                continue
+                
+            try:
+                data = r.json()
+            except ValueError as e:
+                logging.warning(f"SZSE returned invalid JSON for keyword '{kw}': {r.text[:200]}")
+                continue
+            
+            announcements = data.get("data", {}).get("announcements", []) if isinstance(data, dict) else []
+            
+            for a in announcements:
+                url = a.get("attachPath", "")
+                if url and not url.startswith("http"):
+                    url = f"http://disc.static.szse.cn/download/{url.lstrip('/')}"
+                
+                results.append({
+                    "source": "szse",
+                    "id": a.get("id") or a.get("seqId") or a.get("attachPath"),
+                    "title": a.get("title"),
+                    "time": a.get("publishTime"),
+                    "url": url,
+                    "raw": a,
+                    "keyword": kw,
+                })
+            
+            time.sleep(0.8)
+            
+        except Exception as e:
+            logging.error(f"SZSE fetch failed for keyword '{kw}': {e}")
+            continue
+            
     return results
