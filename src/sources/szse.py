@@ -2,12 +2,12 @@
 import requests, random, time
 from typing import List, Dict
 
-SZSE_URL = "http://www.szse.cn/api/disc/announcement/annList"
+SZSE_URL = "https://www.szse.cn/api/disc/announcement/annList"
 SZSE_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Content-Type": "application/json",
-    "Origin": "http://www.szse.cn",
-    "Referer": "http://www.szse.cn/disclosure/listed/notice/",
+    "Origin": "https://www.szse.cn",
+    "Referer": "https://www.szse.cn/disclosure/listed/notice/",
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0 Safari/537.36",
     "X-Requested-With": "XMLHttpRequest",
 }
@@ -30,7 +30,14 @@ def fetch_szse(keywords: List[str], days_back: int = 90) -> List[Dict]:
                 "secCode": ["300750"],
             }
             
-            r = requests.post(f"{SZSE_URL}?random={random.random()}", headers=SZSE_HEADERS, json=body, timeout=20)
+            url = f"{SZSE_URL}?random={random.random()}"
+            logging.debug(f"SZSE request URL: {url}")
+            logging.debug(f"SZSE request body: {body}")
+            
+            r = requests.post(url, headers=SZSE_HEADERS, json=body, timeout=20)
+            logging.debug(f"SZSE response status: {r.status_code}")
+            logging.debug(f"SZSE response headers: {dict(r.headers)}")
+            
             r.raise_for_status()
             
             # Check if response has content before parsing JSON
@@ -40,8 +47,14 @@ def fetch_szse(keywords: List[str], days_back: int = 90) -> List[Dict]:
                 
             try:
                 data = r.json()
+                logging.debug(f"SZSE JSON response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
             except ValueError as e:
-                logging.warning(f"SZSE returned invalid JSON for keyword '{kw}': {r.text[:200]}")
+                # Check if it's HTML (maintenance page)
+                if r.text.strip().startswith('<!DOCTYPE html>') or r.text.strip().startswith('<html'):
+                    logging.warning(f"SZSE returned HTML page for keyword '{kw}' - possibly blocked or maintenance")
+                    logging.debug(f"First 500 chars: {r.text[:500]}")
+                else:
+                    logging.warning(f"SZSE returned invalid JSON for keyword '{kw}': {r.text[:100]}...")
                 continue
             
             announcements = data.get("data", {}).get("announcements", []) if isinstance(data, dict) else []
