@@ -10,7 +10,7 @@ Oreacle-bot v1.0 monitors the exact sources cited in the ["CATL receives license
 - **SZSE** - Shenzhen Stock Exchange notices  
 - **Jiangxi Natural Resources** - Provincial mining rights announcements
 
-The bot automatically translates Chinese documents, classifies their relevance (e.g., "provisional approval allowing restart" vs "exploration only"), and posts concise, cited updates as Manifold comments with optional rule-based trading.
+The bot uses GPT-4o-mini to analyze Chinese regulatory documents in real-time, extracting exact quotes, translating them, assessing confidence levels, and posting bilingual analysis to Manifold Markets with optional conservative trading.
 
 ## Quick Start
 
@@ -72,34 +72,53 @@ The bot automatically translates Chinese documents, classifies their relevance (
 - **Purpose**: Mining rights transactions and permits for Yichun region
 - **Focus**: License renewals, exploration permits, production approvals
 
-## How It Works
+## Core Functionality
+
+### What the Bot Does
+1. **Monitors 3 Chinese regulatory sources** every 15 minutes for CATL lithium mine updates
+2. **Analyzes documents with AI** using GPT-4o-mini to extract structured information
+3. **Posts bilingual comments** to Manifold Markets with exact Chinese quotes + English translations
+4. **Makes conservative trades** only when high-confidence analysis passes strict safety gates
+5. **Tracks all activity** in SQLite database to prevent duplicate processing
+
+### Specific Analysis Capabilities
+- **Document Classification**: YES_CONDITION (license renewals, production approvals), NO_CONDITION (exploration only, suspensions), AMBIGUOUS, IRRELEVANT
+- **Mine Matching**: Identifies references to Jianxiawo/枧下窝 mine specifically vs other locations
+- **Authority Recognition**: Maps regulatory bodies (Jiangxi Natural Resources, Yichun authorities, etc.)
+- **Confidence Scoring**: 0.0-1.0 confidence with evidence-based reasoning
+- **Risk Detection**: Flags exploration-only permits, typos, unclear language
+- **Quote Extraction**: Preserves exact Chinese regulatory language with literal English translations
+
+### Trading Logic (Optional)
+- **Conservative Gates**: Requires entity match + license action + high confidence + clear evidence
+- **NO False Positives**: Multiple validation layers prevent bad trades
+- **Small Positions**: Default 5 M$ limit orders at 55% probability
+- **Comment-Only Mode**: Trading disabled by default (`OREACLE_COMMENT_ONLY=1`)
+
+## Technical Implementation
 
 ### With LLM Integration (Recommended)
-1. **Data Collection**: Scans all three sources every 15 minutes using Chinese keywords
-2. **Deduplication**: Uses SQLite database to track previously seen items
-3. **LLM Analysis**: GPT-4o-mini analyzes Chinese regulatory documents to determine:
-   - **Mine Match**: `JIANXIAWO_MATCH`, `POSSIBLE_MATCH`, `NO_MATCH`
-   - **Classification**: `YES_CONDITION`, `NO_CONDITION`, `AMBIGUOUS`, `IRRELEVANT`
-   - **Confidence Score**: 0.0-1.0 with evidence quotes and reasoning
-   - **Built-in Translation**: Chinese→English with exact quote preservation
-4. **Conservative Gates**: Strict decision logic prevents false positives in trading
-5. **Rich Comments**: Bilingual analysis with confidence indicators and source links
-6. **Optional Trading**: Only executes with high-confidence LLM analysis passing strict gates
+1. **Enhanced Data Collection**: 
+   - CNINFO: Keyword search + stock code 300750 sweep
+   - SZSE: Retry logic with reduced keyword set on failures
+   - Jiangxi: Mining rights portal scraping with relevance filtering
+2. **Boolean Prefiltering**: Requires (company OR mine OR geo) AND (license-action OR resumption verb)
+3. **LLM Analysis**: Structured JSON Schema output with exact quote preservation
+4. **Decision Gates**: Conservative logic prevents false positives in trading
+5. **Rich Comments**: Bilingual format with confidence indicators, evidence quotes, source links
 
 ### Fallback Mode (No OpenAI Key)
-- Uses legacy regex classification and optional DeepL/Google translation
-- Less sophisticated but functional for basic keyword detection
-- Automatically enabled when `OPENAI_API_KEY` is not provided
+- Regex-based classification with Chinese/English keyword matching
+- Optional DeepL/Google translation for Chinese text
+- Basic relevance filtering and comment generation
+- Automatically enabled when `OPENAI_API_KEY` not provided
 
 ### Analysis Pipeline
 ```
-Document → LLM Extraction → Decision Gates → Comment/Trade
-           ↓
-         - Exact Chinese quotes
-         - English translations  
-         - Confidence scores
-         - Evidence reasoning
-         - Risk flags
+Raw Document → Boolean Prefilter → LLM Extraction → Decision Gates → Action
+                     ↓                    ↓              ↓
+               Entity + Action      Structured JSON    Comment/Trade
+               Match Required       with Evidence      if Gates Pass
 ```
 
 ## Architecture & Files
@@ -124,6 +143,59 @@ Document → LLM Extraction → Decision Gates → Comment/Trade
 
 ### Main Application
 - `src/monitor.py` - Main monitoring loop with LLM integration
+
+## Expected Output Examples
+
+### LLM Analysis Output
+When the bot finds a relevant document, it extracts structured information:
+```json
+{
+  "mine_match": "JIANXIAWO_MATCH",
+  "proposed_label": "YES_CONDITION", 
+  "confidence": 0.85,
+  "key_terms_found_zh": ["采矿许可证延续", "恢复生产"],
+  "key_terms_found_en": ["mining license renewal", "resume production"],
+  "evidence": [{
+    "exact_zh_quote": "同意宜春枧下窝锂云母矿采矿许可证延续申请",
+    "en_literal": "Approve the mining license renewal application for Yichun Jianxiawo lithium mica mine",
+    "where_in_doc": "main announcement"
+  }]
+}
+```
+
+### Manifold Comments
+The bot posts bilingual comments like:
+```markdown
+🤖 Oreacle LLM Analysis — 🟢 Confidence: 85%
+
+📄 Source: [江西省自然资源厅批复](https://example.com/doc)
+🏛️ Authority: Jiangxi Natural Resources Department  
+⛏️ Mine Match: JIANXIAWO_MATCH
+
+Key Evidence (ZH→EN):
+> 中文: 「同意宜春枧下窝锂云母矿采矿许可证延续申请」
+> English: Approve the mining license renewal application for Yichun Jianxiawo lithium mica mine
+
+LLM Verdict: YES_CONDITION → Final: YES_CONDITION
+
+Terms Found:
+- 🇨🇳 采矿许可证延续, 恢复生产
+- 🇬🇧 mining license renewal, resume production
+
+*Automated analysis by Oreacle Bot*
+```
+
+### Console Logs
+```
+[INFO] LLM integration: ENABLED
+[INFO] LLM model: gpt-4o-mini, min confidence: 0.75
+[INFO] Connected to market: CATL receives license renewal...
+[INFO] CNINFO: Found 2 items
+[INFO] Processing cninfo item: 宜春枧下窝采矿许可证延续申请获批...
+[INFO] Running LLM extraction...
+[INFO] LLM Analysis - Proposed: YES_CONDITION, Final: YES_CONDITION, Confidence: 0.85
+[INFO] Posted LLM comment for cninfo item_12345
+```
 
 ## Relevant Links
 
