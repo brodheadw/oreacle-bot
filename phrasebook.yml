@@ -1,0 +1,63 @@
+yes_zh:
+  - 采矿许可证恢复
+  - 恢复生产
+  - 恢复开采  
+  - 核发采矿许可证
+  - 采矿许可证延续
+  - 采矿许可证续期
+  - 采矿许可证换发
+  - 准予恢复生产
+  - 批准恢复开采
+  - 同意恢复生产
+
+yes_en:
+  - mining license renewed
+  - resume production
+  - resumption of mining
+  - mining permit granted
+  - license renewal approved
+  - permit renewal
+  - production resumption
+  - restart mining
+  - approved to resume
+
+no_zh:
+  - 仅限勘探
+  - 探矿权
+  - 暂停生产
+  - 停止生产
+  - 责令停产
+  - 暂停开采
+  - 停止开采
+  - 吊销采矿许可证
+  - 撤销采矿许可证
+
+no_en:
+  - exploration only
+  - exploration permit
+  - suspend production
+  - halt production
+  - stop mining
+  - cease operations
+  - revoke license
+  - cancel permit
+
+mine_aliases:
+  - 枧下窝
+  - Jianxiawo
+  - Jianxia Wo
+  - 宜春市袁州区枧下窝
+  - 宜春枧下窝
+  - 袁州区枧下窝
+  - 宜春锂矿
+  - Yichun lithium
+  - CATL Yichun
+  - 宁德时代宜春
+
+authorities:
+  - 江西省自然资源厅
+  - 宜春市自然资源局
+  - 袁州区自然资源局
+  - 江西省应急管理厅
+  - Jiangxi Natural Resources
+  - Yichun Natural Resources

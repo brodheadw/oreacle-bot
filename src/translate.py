@@ -42,8 +42,12 @@ class GoogleTranslator(Translator):
             return text
 
 def get_translator() -> Translator:
+    import logging
     if DEEPL_KEY:
+        logging.info("Using DeepL translator")
         return DeepLTranslator()
     if GOOGLE_KEY:
+        logging.info("Using Google translator")
         return GoogleTranslator()
+    logging.warning("No translation API keys configured - Chinese text will not be translated")
     return Translator()
