@@ -8,7 +8,7 @@ Manifold Markets API and retrieve real market information.
 import pytest
 import os
 from unittest.mock import patch
-from oreacle_bot.client import ManifoldClient
+from oreaclebot.client import ManifoldClient
 
 
 class TestManifoldIntegration:

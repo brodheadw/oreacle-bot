@@ -7,7 +7,7 @@ CATL-related prediction markets.
 
 import pytest
 import os
-from oreacle_bot.client import ManifoldClient
+from oreaclebot.client import ManifoldClient
 
 
 class TestMikhailTalMarkets:

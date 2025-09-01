@@ -6,7 +6,7 @@ These tests verify that our client can place real trades on the CATL market.
 
 import pytest
 import os
-from oreacle_bot.client import ManifoldClient, LimitOrder, Outcome
+from oreaclebot.client import ManifoldClient, LimitOrder, Outcome
 
 
 class TestTrading:

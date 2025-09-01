@@ -19,15 +19,16 @@ KEYWORDS_ZH = [
     "枧下窝", "宜春", "宜丰", "奉新", "采矿许可证", "采矿权", "探矿权", "延续", "续期", "换发", "恢复生产", "恢复开采"
 ]
 
-LOG_LEVEL = os.environ.get("OREACLE_LOG", "INFO").upper()
-logging.basicConfig(level=LOG_LEVEL, format="[%(asctime)s] %(levelname)s: %(message)s")
-
-MANI_KEY = os.environ["MANIFOLD_API_KEY"]
-MARKET_SLUG = os.environ["MARKET_SLUG"] # e.g., "MikhailTal/catl-receives-license-renewal-for-y"
-COMMENT_ONLY = os.environ.get("OREACLE_COMMENT_ONLY", "1") == "1"
-USE_LLM = os.environ.get("OPENAI_API_KEY") is not None
-
-CHECK_INTERVAL_SEC = int(os.environ.get("OREACLE_INTERVAL", "900")) # 15 min default
+def get_config():
+    """Get configuration from environment variables."""
+    return {
+        "manifold_key": os.environ["MANIFOLD_API_KEY"],
+        "market_slug": os.environ["MARKET_SLUG"],
+        "comment_only": os.environ.get("OREACLE_COMMENT_ONLY", "1") == "1",
+        "use_llm": os.environ.get("OPENAI_API_KEY") is not None,
+        "check_interval": int(os.environ.get("OREACLE_INTERVAL", "900")),
+        "log_level": os.environ.get("OREACLE_LOG", "INFO").upper()
+    }
 
 # Load phrasebook once at startup
 try:
@@ -49,14 +50,17 @@ def format_comment(item, en, zh, verdict):
     return head + body + foot
 
 def run_once():
+    config = get_config()
+    logging.basicConfig(level=config["log_level"], format="[%(asctime)s] %(levelname)s: %(message)s")
+    
     logging.info("Starting monitoring cycle...")
     store = Store()
-    if not USE_LLM:
+    if not config["use_llm"]:
         translator = get_translator()
     
     logging.info("Connecting to Manifold Markets...")
-    mani = ManifoldClient(MANI_KEY)
-    market = mani.get_market_by_slug(MARKET_SLUG)
+    mani = ManifoldClient(config["manifold_key"])
+    market = mani.get_market_by_slug(config["market_slug"])
     cid = market["id"]
     logging.info(f"Connected to market: {market.get('question', 'Unknown')}")
 
@@ -122,7 +126,7 @@ def run_once():
             continue
         
         try:
-            if USE_LLM:
+            if config["use_llm"]:
                 # LLM Analysis Pipeline
                 logging.info("Running LLM extraction...")
                 extraction = extract_from_text(zh_text, url, PHRASEBOOK)
@@ -142,7 +146,7 @@ def run_once():
                         logging.error(f"Failed to post LLM comment: {e}")
                 
                 # Trading logic (only with strict LLM gate)
-                if not COMMENT_ONLY:
+                if not config["comment_only"]:
                     if passes_yes_gate(extraction):
                         try:
                             mani.place_limit_yes(cid, amount=5, limit_prob=0.55)
@@ -179,11 +183,14 @@ def run_once():
         store.add(SeenItem(it["source"], it["id"], it.get("url") or "", it.get("title") or "", int(time.time())))
 
 def main():
-    logging.info(f"Oreacle Bot starting up - monitoring every {CHECK_INTERVAL_SEC} seconds")
-    logging.info(f"Target market: {MARKET_SLUG}")
-    logging.info(f"Comment only mode: {COMMENT_ONLY}")
-    logging.info(f"LLM integration: {'ENABLED' if USE_LLM else 'DISABLED (no OpenAI API key)'}")
-    if USE_LLM:
+    config = get_config()
+    logging.basicConfig(level=config["log_level"], format="[%(asctime)s] %(levelname)s: %(message)s")
+    
+    logging.info(f"Oreacle Bot starting up - monitoring every {config['check_interval']} seconds")
+    logging.info(f"Target market: {config['market_slug']}")
+    logging.info(f"Comment only mode: {config['comment_only']}")
+    logging.info(f"LLM integration: {'ENABLED' if config['use_llm'] else 'DISABLED (no OpenAI API key)'}")
+    if config["use_llm"]:
         model = os.getenv("OREACLE_MODEL", "gpt-4o-mini")
         min_conf = os.getenv("OREACLE_MIN_CONFIDENCE", "0.75")
         logging.info(f"LLM model: {model}, min confidence: {min_conf}")
@@ -195,8 +202,8 @@ def main():
         except Exception as e:
             logging.exception(f"run_once error: {e}")
         
-        logging.info(f"Sleeping for {CHECK_INTERVAL_SEC} seconds until next cycle...")
-        time.sleep(CHECK_INTERVAL_SEC)
+        logging.info(f"Sleeping for {config['check_interval']} seconds until next cycle...")
+        time.sleep(config['check_interval'])
 
 if __name__ == "__main__":
     main()
