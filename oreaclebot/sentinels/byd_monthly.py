@@ -418,8 +418,8 @@ class BYDSentinel:
         return results
 
 
-def main():
-    """CLI entry point for BYD sentinel."""
+def run_cli():
+    """CLI entry point for BYD sentinel - only for direct execution."""
     import os
     import argparse
     
@@ -453,5 +453,32 @@ def main():
     return 0
 
 
+def main():
+    """Main function for CLI integration - no argument parsing."""
+    import os
+    
+    # Initialize client
+    api_key = os.environ.get("MANIFOLD_API_KEY")
+    if not api_key:
+        print("Error: MANIFOLD_API_KEY environment variable required")
+        return 1
+        
+    client = ManifoldClient(api_key)
+    sentinel = BYDSentinel(client)
+    
+    # Default behavior: dry run with no specific markets
+    results = sentinel.run_monthly_check(market_ids=[], dry_run=True)
+    
+    print(f"BYD Sentinel Results:")
+    print(f"  Reports found: {results['reports_found']}")
+    print(f"  Comments posted: {results['comments_posted']}")
+    if results['errors']:
+        print(f"  Errors: {len(results['errors'])}")
+        for error in results['errors']:
+            print(f"    - {error}")
+    
+    return 0
+
+
 if __name__ == "__main__":
-    exit(main())
+    exit(run_cli())

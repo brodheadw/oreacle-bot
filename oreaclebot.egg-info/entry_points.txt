@@ -1,6 +1,0 @@
-[console_scripts]
-oreaclebot = oreaclebot.cli:main
-oreaclebot-ladder-check = oreaclebot.cli:ladder_check
-oreaclebot-monitor = oreaclebot.cli:monitor
-oreaclebot-sentinel-byd = oreaclebot.cli:sentinel_byd
-oreaclebot-single = oreaclebot.cli:single_cycle

@@ -265,8 +265,8 @@ This violates the fundamental constraint that P(event by earlier date) ≤ P(eve
         }
 
 
-def main():
-    """CLI entry point for ladder monotonicity checking."""
+def run_cli():
+    """CLI entry point for ladder monotonicity checking - only for direct execution."""
     import os
     import argparse
     
@@ -290,5 +290,24 @@ def main():
     return 0
 
 
+def main():
+    """Main function for CLI integration - no argument parsing."""
+    import os
+    
+    # Initialize client
+    api_key = os.environ.get("MANIFOLD_API_KEY")
+    if not api_key:
+        print("Error: MANIFOLD_API_KEY environment variable required")
+        return 1
+        
+    client = ManifoldClient(api_key)
+    checker = LadderMonotonicity(client, min_violation_size=0.05)
+    
+    # For now, would need to implement market search to get relevant markets
+    print("Note: Market fetching not implemented - pass markets list to run_monotonicity_check()")
+    
+    return 0
+
+
 if __name__ == "__main__":
-    exit(main())
+    exit(run_cli())
