@@ -1,0 +1,3 @@
+[console_scripts]
+oreaclebot-monitor = oreaclebot.cli:monitor
+oreaclebot-single = oreaclebot.cli:single_cycle

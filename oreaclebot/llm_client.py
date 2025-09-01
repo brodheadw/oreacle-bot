@@ -5,7 +5,13 @@ from typing import Dict, Any
 from openai import OpenAI
 from .models import Extraction
 
-CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def get_client():
+    """Get OpenAI client, initializing lazily."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+    return OpenAI(api_key=api_key)
+
 MODEL = os.getenv("OREACLE_MODEL", "gpt-4o-mini")  # or "gpt-4.1"
 
 EXTRACTION_SYSTEM = """You are a compliance-grade, extractive information extractor for Chinese regulatory documents about mining licenses.
@@ -79,7 +85,8 @@ def extract_from_text(source_text: str, url: str, phrasebook: Dict[str, Any]) ->
     )
 
     # Using Chat Completions with structured outputs
-    resp = CLIENT.chat.completions.create(
+    client = get_client()
+    resp = client.chat.completions.create(
         model=MODEL,
         temperature=0,
         response_format={

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oreacle-bot"
+name = "oreaclebot"
 version = "1.0.0"
 description = "A monitoring bot that tracks Chinese regulatory sources for CATL lithium mine license updates and automatically posts analysis to Manifold Markets"
 readme = "README.md"
@@ -45,17 +45,17 @@ dev = [
 ]
 
 [project.scripts]
-oreacle-monitor = "oreacle_bot.cli:monitor"
-oreacle-single = "oreacle_bot.cli:single_cycle"
+oreaclebot-monitor = "oreaclebot.cli:monitor"
+oreaclebot-single = "oreaclebot.cli:single_cycle"
 
 [project.urls]
-Homepage = "https://github.com/your-username/oreacle-bot"
-Repository = "https://github.com/your-username/oreacle-bot"
-Issues = "https://github.com/your-username/oreacle-bot/issues"
+Homepage = "https://github.com/brodheadw/oreacle-bot"
+Repository = "https://github.com/brodheadw/oreacle-bot"
+Issues = "https://github.com/brodheadw/oreacle-bot/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["oreacle_bot*"]
+include = ["oreaclebot*"]
 
 [tool.black]
 line-length = 88

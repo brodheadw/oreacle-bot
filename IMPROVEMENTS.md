@@ -1,11 +1,6 @@
 # Oreacle Bot Improvements
 
-This document tracks the improvements being made to transform the oreacle-bot from a simple script collection into a proper Python package with comprehensive testing and modern interfaces.
-
-
-NEVER PUT - (or even _) in package name it is asking for trouble. 
-
-
+This document tracks the improvements being made to transform the oreaclebot from a simple script collection into a proper Python package with comprehensive testing and modern interfaces.
 
 ## 🏗️ Package Structure Improvements
 
@@ -13,19 +8,19 @@ NEVER PUT - (or even _) in package name it is asking for trouble.
 - **Created `pyproject.toml`** - Modern Python packaging configuration with:
   - Proper project metadata and dependencies
   - Development dependencies (pytest, black, isort, flake8, mypy)
-  - CLI entry points for `oreacle-monitor` and `oreacle-single`
+  - CLI entry points for `oreaclebot-monitor` and `oreaclebot-single`
   - Build system configuration
   - Tool configurations for code quality
 
-- **Package Directory Structure** - Restructured from `oreacle-bot/` to `oreacle_bot/`:
+- **Package Directory Structure** - Restructured from `oreaclebot/` to `oreaclebot/`:
   - ✅ Moved all modules to proper package structure
   - ✅ Created `__init__.py` files for proper imports
-  - ✅ Organized sources in `oreacle_bot/sources/` subpackage
+  - ✅ Organized sources in `oreaclebot/sources/` subpackage
   - ✅ Removed duplicate directory structure
 
-- **CLI Interface** - Created `oreacle_bot/cli.py` with:
-  - ✅ `oreacle-monitor` command for continuous monitoring
-  - ✅ `oreacle-single` command for single-cycle execution
+- **CLI Interface** - Created `oreaclebot/cli.py` with:
+  - ✅ `oreaclebot-monitor` command for continuous monitoring
+  - ✅ `oreaclebot-single` command for single-cycle execution
   - ✅ Proper argument parsing and configuration management
   - ✅ Environment variable validation
   - ✅ Error handling and logging setup
@@ -163,7 +158,7 @@ NEVER PUT - (or even _) in package name it is asking for trouble.
 
 ### Phase 1: Package Structure ✅ COMPLETED
 1. ✅ Create `pyproject.toml` with proper configuration
-2. ✅ Restructure directory layout to `oreacle_bot/` package
+2. ✅ Restructure directory layout to `oreaclebot/` package
 3. ✅ Create CLI entry points
 4. ✅ Fix import statements
 
@@ -196,8 +191,8 @@ NEVER PUT - (or even _) in package name it is asking for trouble.
 ## 🎯 Benefits of These Improvements
 
 ### For Users
-- **Easy Installation**: `pip install oreacle-bot`
-- **Simple CLI**: `oreacle-monitor` and `oreacle-single` commands
+- **Easy Installation**: `pip install oreaclebot`
+- **Simple CLI**: `oreaclebot-monitor` and `oreaclebot-single` commands
 - **Better Reliability**: Comprehensive testing and error handling
 - **Clear Documentation**: Proper usage guides and examples
 - **Real Trading**: Actual integration with Manifold Markets for live trading
@@ -252,7 +247,7 @@ NEVER PUT - (or even _) in package name it is asking for trouble.
 
 ## 🎉 Project Status: PRODUCTION READY
 
-The oreacle-bot has been successfully transformed from a simple script collection into a **professional Python package** with:
+The oreaclebot has been successfully transformed from a simple script collection into a **professional Python package** with:
 
 - ✅ **32 passing tests** including real API integration
 - ✅ **Real trading functionality** verified with live trades

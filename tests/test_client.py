@@ -5,7 +5,7 @@ Tests for the Manifold API client.
 import pytest
 import requests
 from unittest.mock import Mock, patch
-from oreacle_bot.client import ManifoldClient, LimitOrder, Comment, Outcome
+from oreaclebot.client import ManifoldClient, LimitOrder, Comment, Outcome
 
 
 class TestManifoldClient:

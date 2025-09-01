@@ -3,7 +3,7 @@ Tests for Pydantic models.
 """
 
 import pytest
-from oreacle_bot.models import Extraction, Evidence
+from oreaclebot.models import Extraction, Evidence
 
 
 class TestEvidence:
