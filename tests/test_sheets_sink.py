@@ -17,8 +17,12 @@ from oreaclebot.models import Extraction, Evidence
 def temp_csv_path():
     """Temporary CSV file path for testing."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as f:
-        yield f.name
-    Path(f.name).unlink(missing_ok=True)
+        temp_path = f.name
+    # Remove the file so SpreadsheetSink can create it properly
+    Path(temp_path).unlink(missing_ok=True) 
+    yield temp_path
+    # Cleanup after test
+    Path(temp_path).unlink(missing_ok=True)
 
 
 @pytest.fixture 
