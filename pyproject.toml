@@ -47,6 +47,9 @@ dev = [
 [project.scripts]
 oreaclebot-monitor = "oreaclebot.cli:monitor"
 oreaclebot-single = "oreaclebot.cli:single_cycle"
+oreaclebot-ladder-check = "oreaclebot.cli:ladder_check"
+oreaclebot-sentinel-byd = "oreaclebot.cli:sentinel_byd"
+oreaclebot = "oreaclebot.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/brodheadw/oreacle-bot"

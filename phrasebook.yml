@@ -19,6 +19,13 @@ yes_zh:
   - 核发采矿许可证
   - 颁发采矿许可证
   - 发放采矿许可证
+  - 重新开采
+  - 重启开采
+  - 复工
+  - 复产
+  - 开工复产
+  - 全面复产
+  - 正常开采
 
 yes_en:
   - resume production
@@ -29,6 +36,12 @@ yes_en:
   - production resumption
   - restart mining
   - approved to resume
+  - restart operations
+  - resume operations
+  - full production
+  - normal production
+  - mining resumed
+  - operations resumed
 
 no_zh:
   - 仅限勘探
@@ -62,9 +75,12 @@ mine_aliases:
   - 锂云母矿
   - Jianxiawo
   - Jianxia Wo
-  # fuzzy/typo variants seen in media
+  # fuzzy/typo variants seen in media  
   - 建夏沃
   - 建夏窝
+  - 涧下窝锂矿
+  - 宜春枧下窝矿区
+  - 枧下窝含锂瓷土矿
 
 company_aliases:
   - 宁德时代

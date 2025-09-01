@@ -62,6 +62,36 @@ def single_cycle():
         sys.exit(1)
 
 
+def ladder_check():
+    """Run ladder monotonicity check."""
+    log_level = os.environ.get("OREACLE_LOG", "INFO").upper()
+    logging.basicConfig(level=log_level, format="[%(asctime)s] %(levelname)s: %(message)s")
+    
+    # Import here to avoid circular imports
+    from .ladder import main as ladder_main
+    
+    try:
+        return ladder_main()
+    except Exception as e:
+        logging.exception(f"Error in ladder check: {e}")
+        sys.exit(1)
+
+
+def sentinel_byd():
+    """Run BYD monthly sentinel."""
+    log_level = os.environ.get("OREACLE_LOG", "INFO").upper()
+    logging.basicConfig(level=log_level, format="[%(asctime)s] %(levelname)s: %(message)s")
+    
+    # Import here to avoid circular imports
+    from .sentinels.byd_monthly import main as byd_main
+    
+    try:
+        return byd_main()
+    except Exception as e:
+        logging.exception(f"Error in BYD sentinel: {e}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point with argument parsing."""
     parser = argparse.ArgumentParser(
@@ -82,6 +112,24 @@ def main():
         help="Run a single monitoring cycle"
     )
     
+    # Ladder monotonicity check
+    ladder_parser = subparsers.add_parser(
+        "ladder-check",
+        help="Check market ladder monotonicity"
+    )
+    
+    # Sentinel commands
+    sentinel_parser = subparsers.add_parser(
+        "sentinel",
+        help="Run specialized monitoring sentinels"
+    )
+    sentinel_subparsers = sentinel_parser.add_subparsers(dest="sentinel_type", help="Sentinel types")
+    
+    byd_parser = sentinel_subparsers.add_parser(
+        "byd-monthly",
+        help="Monitor BYD monthly sales/production reports"
+    )
+    
     args = parser.parse_args()
     
     # Default to monitor if no command specified
@@ -92,6 +140,14 @@ def main():
         monitor()
     elif args.command == "single":
         single_cycle()
+    elif args.command == "ladder-check":
+        ladder_check()
+    elif args.command == "sentinel":
+        if args.sentinel_type == "byd-monthly":
+            sentinel_byd()
+        else:
+            sentinel_parser.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
