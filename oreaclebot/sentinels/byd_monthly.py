@@ -12,6 +12,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import json
 
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
+
 from ..client import ManifoldClient, Comment
 from ..sheets_sink import SpreadsheetRow, SpreadsheetSink
 
@@ -111,23 +116,72 @@ class BYDSentinel:
         announcements = []
         
         try:
-            # HKEXnews announcement search URL
-            # Note: This is a simplified implementation - actual API endpoints may vary
-            url = "https://www1.hkexnews.hk/search/titlesearch.xhtml"
-            params = {
-                'lang': 'en',
-                'sortby': 'datetime',
-                'sortdir': 'desc',
-                'stock': self.hk_stock_code,
-                'from': (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
-            }
+            if BeautifulSoup is None:
+                raise ImportError("beautifulsoup4 not installed - run: pip install beautifulsoup4")
             
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
+            # Use lci.html index for both languages (no JS required)
+            user_agent = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
             
-            # Parse HTML response (simplified - would need proper HTML parsing)
-            # This is a placeholder for actual implementation
-            self.logger.info(f"Fetched HKEXnews data for BYD ({self.hk_stock_code})")
+            for lang in ("zh", "en"):
+                url = f"https://www1.hkexnews.hk/listedco/listconews/index/lci.html?lang={lang}"
+                self.logger.info(f"🌐 HKEX {lang.upper()} fetch: {url}")
+                
+                response = requests.get(url, headers=user_agent, timeout=30)
+                self.logger.info(f"📡 HTTP {response.status_code} for HKEX {lang.upper()}")
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, "html.parser")
+                all_links = soup.find_all("a", href=True)
+                self.logger.info(f"🔍 Found {len(all_links)} total links on HKEX {lang.upper()} page")
+                
+                # Show first 5 normalized titles for debugging
+                sample_titles = []
+                for i, a in enumerate(all_links[:5]):
+                    text = " ".join(a.get_text(strip=True).split())
+                    sample_titles.append(f"  {i+1}. {text[:80]}")
+                self.logger.info(f"📋 First 5 HKEX {lang.upper()} titles:\n" + "\n".join(sample_titles))
+                
+                # Find all announcement links
+                for a in all_links:
+                    text = " ".join(a.get_text(strip=True).split())
+                    
+                    # Check for BYD company match
+                    byd_match = "比亞迪" in text or "BYD" in text.upper()
+                    # Check for keywords
+                    keywords_match = (re.search(r"(產銷快報|产销快报)", text) or 
+                                    "PRODUCTION AND SALES VOLUME" in text.upper())
+                    
+                    if byd_match and keywords_match:
+                        self.logger.info(f"✅ REGEX MATCHED BYD announcement: {text}")
+                        self.logger.info(f"🎯 BYD match: {byd_match}, Keywords match: {keywords_match}")
+                        
+                        announcements.append({
+                            'announcementTitle': text,
+                            'adjunctUrl': a["href"] if a["href"].startswith("http") else f"https://www1.hkexnews.hk{a['href']}",
+                            'content': '',  # Will be fetched if needed
+                            'publishDate': datetime.now().strftime('%Y-%m-%d'),  # Approximate
+                            'lang': lang
+                        })
+                    elif byd_match:
+                        self.logger.debug(f"🏢 BYD company found but no keywords: {text[:100]}")
+                    elif keywords_match:
+                        self.logger.debug(f"🔑 Keywords found but not BYD: {text[:100]}")
+            
+            # Also try backup titlesearch for both stock codes
+            for stock_id in ("01211", "1211"):
+                for lang in ("EN", "ZH"):
+                    backup_url = f"https://www1.hkexnews.hk/search/titlesearch.xhtml?lang={lang}&category=0&market=SEHK&stockId={stock_id}"
+                    self.logger.info(f"Backup search: {backup_url}")
+                    
+                    try:
+                        response = requests.get(backup_url, headers=user_agent, timeout=20)
+                        response.raise_for_status()
+                        # Parse this too if lci.html didn't work
+                        # (implementation similar to above)
+                    except Exception as backup_e:
+                        self.logger.warning(f"Backup search failed for {stock_id} {lang}: {backup_e}")
+                        
+            self.logger.info(f"Found {len(announcements)} BYD announcements from HKEXnews")
             
         except Exception as e:
             self.logger.error(f"Failed to fetch HKEXnews announcements: {e}")
@@ -194,17 +248,29 @@ class BYDSentinel:
         Returns:
             BYDMonthlyData if this is a monthly report, None otherwise
         """
-        title = announcement.get('announcementTitle', '').lower()
+        title = announcement.get('announcementTitle', '')
         content = announcement.get('content', '')
         
-        # Check if this is a monthly sales/production report
+        # Check if this is a monthly sales/production report (case-insensitive matching)
         monthly_keywords = [
             'monthly sales', 'monthly production', 'monthly delivery',
-            '月度销量', '月度产量', '产销快报', '销量快报',
-            'sales volume', 'production volume'
+            '月度销量', '月度產銷', '月度产量', '月度產量', 
+            '产销快报', '產銷快報', '销量快报', '銷量快報',
+            'sales volume', 'production volume',
+            'production and sales volume', 'voluntary announcement'
         ]
         
-        is_monthly = any(keyword in title for keyword in monthly_keywords)
+        # Case-insensitive matching for English, exact matching for Chinese
+        title_lower = title.lower()
+        
+        # Test both case-insensitive (for English) and exact (for Chinese)
+        english_keywords = [kw for kw in monthly_keywords if all(ord(char) < 256 for char in kw)]
+        chinese_keywords = [kw for kw in monthly_keywords if not all(ord(char) < 256 for char in kw)]
+        
+        english_match = any(keyword.lower() in title_lower for keyword in english_keywords)
+        chinese_match = any(keyword in title for keyword in chinese_keywords)
+        
+        is_monthly = english_match or chinese_match
         if not is_monthly:
             return None
             
@@ -224,14 +290,14 @@ class BYDSentinel:
         # Extract sales numbers using regex patterns
         # These patterns would need to be refined based on actual BYD report formats
         
-        # Total sales (汽车销量、总销量)
-        total_pattern = r'(?:总销量|汽车销量)(?:约为|为)?[:：\s]*?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万)?)(?:辆|台|units?)'
+        # Total sales (汽车销量、总销量、總銷量) - support both simplified/traditional
+        total_pattern = r'(?:总销量|總銷量|汽车销量|汽車銷量|总销量约为|總銷量約為)[:：\s]*?约?为?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万|萬)?)(?:辆|台|台|units?)'
         total_match = re.search(total_pattern, content, re.IGNORECASE)
         if total_match:
             data.total_sales = self._parse_number(total_match.group(1))
             
-        # NEV sales (新能源汽车销量)
-        nev_pattern = r'新能源汽车销量(?:约为|为)?[:：\s]*?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万)?)(?:辆|台|units?)'
+        # NEV sales (新能源汽车销量、新能源汽車銷量)
+        nev_pattern = r'(?:新能源汽车销量|新能源汽車銷量)[:：\s]*?约?为?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万|萬)?)(?:辆|台|台|units?)'
         nev_match = re.search(nev_pattern, content, re.IGNORECASE)
         if nev_match:
             data.nev_sales = self._parse_number(nev_match.group(1))
@@ -369,9 +435,14 @@ class BYDSentinel:
         }
         
         try:
-            # Fetch announcements from both sources
-            hkex_announcements = self.fetch_hkex_announcements(days_back=7)
-            cninfo_announcements = self.fetch_cninfo_announcements(days_back=7)
+            # Use extended date window to account for HKT timezone (UTC+8)
+            # When it's morning in US, it might already be evening of next day in HKT
+            extended_days_back = 2  # 48-hour window to catch HKT announcements
+            self.logger.info(f"🕐 Using {extended_days_back}-day window to account for HKT timezone (UTC+8)")
+            
+            # Fetch announcements from both sources  
+            hkex_announcements = self.fetch_hkex_announcements(days_back=extended_days_back)
+            cninfo_announcements = self.fetch_cninfo_announcements(days_back=extended_days_back)
             
             all_announcements = hkex_announcements + cninfo_announcements
             self.logger.info(f"Found {len(all_announcements)} total announcements")
