@@ -92,7 +92,7 @@ class TestLadderMonotonicity:
         violation = violations[0]
         assert violation.earlier_prob == 0.8  # Earlier market (June 30)
         assert violation.later_prob == 0.7    # Later market (December 31)
-        assert violation.violation_size == 0.1
+        assert abs(violation.violation_size - 0.1) < 0.0001
     
     def test_check_group_monotonicity_no_violation(self, ladder_checker):
         """Test no violation when probabilities are correctly ordered."""
@@ -141,7 +141,7 @@ class TestLadderViolation:
         
         assert violation.earlier_prob == 0.8
         assert violation.later_prob == 0.6
-        assert violation.violation_size == 0.2
+        assert abs(violation.violation_size - 0.2) < 0.0001
     
     def test_violation_string_representation(self):
         """Test violation string representation."""
