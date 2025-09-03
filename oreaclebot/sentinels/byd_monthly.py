@@ -116,216 +116,372 @@ class BYDSentinel:
         if BeautifulSoup is None:
             raise ImportError("beautifulsoup4 not installed - run: pip install beautifulsoup4")
         
-        return self._fetch_hkex_title_search(days_back)
+        return self._fetch_hkex_probe(days_back)
     
-    def _fetch_hkex_title_search(self, days_back: int = 3) -> List[Dict]:
+    def _fetch_hkex_probe(self, days_back: int = 7) -> List[Dict]:
         """
-        Fetch BYD announcements from HKEX titlesearch using form submission.
-        The titlesearch page requires POST form submission to get results.
+        HKEX directory probe: directly try known PDF URL patterns instead of broken search APIs.
+        BYD typically posts monthly reports on the 1st of the following month in HKT.
         """
+        from datetime import datetime, timedelta
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            ZoneInfo = None
+            
         hits = []
-        user_agent = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        tz = ZoneInfo("Asia/Hong_Kong") if ZoneInfo else None
+        now_hkt = datetime.now(tz) if tz else datetime.utcnow()
         
-        # Try form submission approach for both languages
-        for lang in ("EN", "ZH"):
-            search_url = "https://www1.hkexnews.hk/search/titlesearch.xhtml"
-            
-            self.logger.info(f"🌐 HKEX form search {lang}: {search_url}")
-            
-            try:
-                # First, get the search form page
-                form_response = requests.get(f"{search_url}?lang={lang}", headers=user_agent, timeout=30)
-                form_response.raise_for_status()
-                
-                # Parse the form to find hidden fields
-                soup = BeautifulSoup(form_response.text, "html.parser")
-                form = soup.find("form")
-                
-                if not form:
-                    self.logger.warning(f"No form found on HKEX {lang} page")
-                    continue
-                
-                # Build form data for BYD search
-                form_data = {
-                    'lang': lang,
-                    'category': '0',
-                    'market': 'SEHK', 
-                    'stockId': '01211',  # BYD stock code with leading zero
-                    'searchWords': 'BYD',  # Search for BYD specifically
-                    'tier1': '0',
-                    'tier2': '0'
-                }
-                
-                # Add any hidden fields from the form
-                for hidden_input in soup.find_all("input", type="hidden"):
-                    name = hidden_input.get("name")
-                    value = hidden_input.get("value", "")
-                    if name and name not in form_data:
-                        form_data[name] = value
-                
-                self.logger.info(f"📡 Submitting HKEX search form for BYD ({lang})")
-                
-                # Submit the form
-                search_response = requests.post(search_url, data=form_data, headers=user_agent, timeout=30)
-                search_response.raise_for_status()
-                
-                # Parse the results
-                results_soup = BeautifulSoup(search_response.text, "html.parser")
-                
-                # Look for results table or announcement list
-                result_links = results_soup.find_all("a", href=True)
-                self.logger.info(f"🔍 Found {len(result_links)} links in search results")
-                
-                # Show sample results for debugging
-                sample_results = []
-                for i, a in enumerate(result_links[:5]):
-                    title = " ".join(a.get_text(strip=True).split())
-                    if title and len(title) > 5:  # Skip short nav links
-                        sample_results.append(f"  {i+1}. {title[:80]}")
-                if sample_results:
-                    self.logger.info(f"📋 Sample {lang} search results:\n" + "\n".join(sample_results))
-                
-                # Filter for monthly announcements
-                for a in result_links:
-                    title = " ".join(a.get_text(strip=True).split())
-                    href = a["href"]
-                    
-                    if not title or len(title) < 10:  # Skip short titles
-                        continue
-                    
-                    # Ensure absolute URL
-                    if not href.startswith("http"):
-                        href = f"https://www1.hkexnews.hk{href}"
-                    
-                    # Check for monthly production/sales announcements
-                    is_monthly = (
-                        "PRODUCTION AND SALES VOLUME" in title.upper()
-                        or re.search(r"(產銷快報|产销快报)", title)
-                        or "MONTHLY RETURN" in title.upper()
-                        or ("自願公告" in title and ("產銷" in title or "产销" in title))
-                    )
-                    
-                    if is_monthly:
-                        self.logger.info(f"✅ MATCHED monthly announcement: {title}")
-                        hits.append({
-                            'announcementTitle': title,
-                            'adjunctUrl': href,
-                            'content': '',  # Will be fetched if needed
-                            'publishDate': datetime.now().strftime('%Y-%m-%d'),
-                            'lang': lang,
-                            'source': 'HKEX_form_search'
-                        })
-                
-            except Exception as e:
-                self.logger.warning(f"Failed HKEX form search {lang}: {e}")
+        session = requests.Session()
+        session.headers.update({"User-Agent": "Mozilla/5.0"})
         
-        self.logger.info(f"Found {len(hits)} BYD announcements from HKEX form search")
+        # Check recent days for PDF posting patterns
+        for day_offset in range(days_back):
+            check_date = now_hkt - timedelta(days=day_offset)
+            year = check_date.year
+            month = check_date.month
+            day = check_date.day
+            
+            # Try HKEX directory probe for this date
+            probe_hits = self._hkex_probe_window(session, year, month, day)
+            if probe_hits:
+                hits.extend(probe_hits)
+                self.logger.info(f"📄 HKEX probe found {len(probe_hits)} PDFs for {year}-{month:02d}-{day:02d}")
+                
+        self.logger.info(f"📄 Total HKEX probe hits: {len(hits)}")
         return hits
+    
+    def _hkex_probe_window(self, session: requests.Session, year: int, month: int, day: int, 
+                          start: str = "03220", end: str = "03250") -> List[Dict]:
+        """
+        Probe HKEX directory for BYD monthly PDFs in a narrow numeric window.
+        Based on known pattern: /sehk/YYYY/MMDD/YYYYMMDD####_c.pdf
+        """
+        base = f"https://www1.hkexnews.hk/listedco/listconews/sehk/{year}/{month:02d}{day:02d}"
+        hits = []
+        
+        # Narrow range based on known August pattern: 2025090103226_c.pdf (03226)
+        for suffix in range(int(start), int(end) + 1, 2):  # Step by 2 for targeted search
+            for lang in ("_c.pdf", "_e.pdf"):
+                url = f"{base}/{year}{month:02d}{day:02d}{suffix:05d}{lang}"
+                try:
+                    # Fast HEAD request to check if PDF exists
+                    head_response = session.head(url, timeout=8)
+                    if head_response.status_code != 200:
+                        continue
+                        
+                    # Found PDF on expected BYD posting date - trust it
+                    # BYD typically posts monthly reports on 1st of following month
+                    if day == 1:  # Only trust PDFs found on 1st of month (typical BYD posting day)
+                        self.logger.info(f"✅ HKEX probe found PDF on BYD posting day: {url}")
+                        hits.append({
+                            "announcementTitle": f"Monthly production/sales {year}-{month:02d} (detected by date probe)",
+                            "adjunctUrl": url,
+                            "content": "",
+                            "publishDate": f"{year}-{month:02d}-{day:02d}",
+                            "lang": "ZH" if lang == "_c.pdf" else "EN",
+                            "source": "HKEX_PROBE"
+                        })
+                        # Continue to find all PDFs, don't return early
+                        
+                except Exception:
+                    continue  # Silently continue to next suffix
+                    
+        return hits
+    
+    def _passes_title_filter(self, announcement: Dict) -> bool:
+        """Check if announcement title passes initial monthly sales filter."""
+        title = announcement.get('announcementTitle', '')
+        
+        # Check if this is a monthly sales/production report (case-insensitive matching)
+        monthly_keywords = [
+            'monthly sales', 'monthly production', 'monthly delivery',
+            '月度销量', '月度產銷', '月度产量', '月度產量', 
+            '产销快报', '產銷快報', '销量快报', '銷量快報',
+            'sales volume', 'production volume',
+            'production and sales volume', 'voluntary announcement'
+        ]
+        
+        # Case-insensitive matching for English, exact matching for Chinese
+        title_lower = title.lower()
+        
+        # Test both case-insensitive (for English) and exact (for Chinese)
+        english_keywords = [kw for kw in monthly_keywords if all(ord(char) < 256 for char in kw)]
+        chinese_keywords = [kw for kw in monthly_keywords if not all(ord(char) < 256 for char in kw)]
+        
+        english_match = any(keyword.lower() in title_lower for keyword in english_keywords)
+        chinese_match = any(keyword in title for keyword in chinese_keywords)
+        
+        return english_match or chinese_match
+    
+    def _diagnose_parse_failure(self, announcement: Dict) -> str:
+        """Diagnose why monthly data parsing failed."""
+        title = announcement.get('announcementTitle', '')
+        content = announcement.get('content', '')
+        
+        if not content:
+            return "no content available"
+            
+        # Check for key Chinese terms
+        if not re.search(r'(新能源汽車|纯电动|插电式混合动力|產銷|产销)', content):
+            return "missing key Chinese terms (新能源汽車/產銷)"
+            
+        # Check for numbers
+        numbers = re.findall(r'(\d+(?:,\d{3})*)', content)
+        if not numbers:
+            return "no comma-formatted numbers found"
+            
+        if len(numbers) < 3:
+            return f"too few numbers ({len(numbers)} found, need ≥3 for total/BEV/PHEV)"
+            
+        # Check for period extraction
+        if not re.search(r'(20\d{2}).*?([0-9]{1,2}).*?(月|MONTH)', content, re.I):
+            return "period not detected (no YYYY-MM pattern)"
+            
+        return "unknown parsing failure"
     
     def fetch_byd_ir_latest(self) -> List[Dict]:
         """
-        Fetch BYD monthly reports from BYD's official IR page.
-        Secondary source that mirrors HKEX announcements.
+        Primary discovery: BYD IR latest announcements (static HTML).
+        Follow 'Latest Announcements' link to find actual announcements.
         """
+        base_url = "https://www.bydglobal.com/cn/en/BYD_ENInvestor/InvestorNotice_mob.html"
+        self.logger.info(f"🌐 BYD IR fetch: {base_url}")
+        
+        try:
+            response = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            self.logger.warning(f"BYD IR base page fetch failed: {e}")
+            return []
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Look for "Latest Announcements" link to follow
+        announcements_link = None
+        for a in soup.find_all("a", href=True):
+            text = a.get_text(strip=True)
+            if "Latest Announcements" in text or "Announcements" in text:
+                announcements_link = a["href"]
+                if not announcements_link.startswith("http"):
+                    announcements_link = "https://www.bydglobal.com" + announcements_link
+                self.logger.info(f"🔗 Found announcements link: {announcements_link}")
+                break
+        
+        if not announcements_link:
+            # Fallback: try common announcement page URLs
+            potential_urls = [
+                "https://www.bydglobal.com/cn/en/BYD_ENInvestor/announcement.html",
+                "https://www.bydglobal.com/en/Investor-Relations/announcements",
+                "https://www.bydglobal.com/announcements",
+            ]
+            self.logger.info("🔍 No announcements link found, trying fallback URLs")
+        else:
+            potential_urls = [announcements_link]
+        
         hits = []
-        user_agent = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
         
-        # Try multiple BYD IR endpoints
-        ir_urls = [
-            "https://www.bydglobal.com/cn/en/BYD_ENInvestor/InvestorNotice_mob.html",
-            "https://www.bydglobal.com/Investor-Relations",
-            "https://www.bydglobal.com/en/News",
-        ]
-        
-        for url in ir_urls:
-            self.logger.info(f"🌐 BYD IR fetch: {url}")
-            
+        # Try each potential announcements page  
+        for url in potential_urls:
+            self.logger.info(f"🌐 Trying announcements page: {url}")
             try:
-                response = requests.get(url, headers=user_agent, timeout=30)
-                self.logger.info(f"📡 HTTP {response.status_code} for BYD IR")
-                response.raise_for_status()
-                
+                response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+                if response.status_code != 200:
+                    self.logger.info(f"📡 HTTP {response.status_code} for {url}")
+                    continue
+                    
                 soup = BeautifulSoup(response.text, "html.parser")
-                all_anchors = soup.find_all("a", href=True)
-                self.logger.info(f"🔍 Found {len(all_anchors)} anchors on BYD IR page")
+                anchors = soup.find_all("a", href=True)
+                self.logger.info(f"🔍 Scanning {len(anchors)} anchors on announcements page")
                 
-                # Look for any text that mentions monthly data or 2025
-                page_text = soup.get_text()
-                if "2025" in page_text and ("monthly" in page_text.lower() or "產銷" in page_text or "production" in page_text.lower()):
-                    self.logger.info("📈 Found potential monthly data mentions in page text")
-                
-                # Show first 10 announcements for debugging (more samples)
+                # Show sample for debugging
                 sample_titles = []
-                for i, a in enumerate(all_anchors[:10]):
+                for i, a in enumerate(anchors[:10]):
                     title = " ".join(a.get_text(strip=True).split())
-                    if title and len(title) > 10:  # Skip short/empty ones
-                        sample_titles.append(f"  {i+1}. {title[:100]}")
+                    if title and len(title) > 8:
+                        sample_titles.append(f"  {i+1}. {title[:80]}")
                 if sample_titles:
-                    self.logger.info(f"📋 First 10 BYD IR titles:\n" + "\n".join(sample_titles))
+                    self.logger.info(f"📋 Sample announcements:\n" + "\n".join(sample_titles))
                 
-                # Look for monthly production/sales announcements (broader search)
-                for a in all_anchors:
+                # Look for monthly sales/production announcements
+                for a in anchors:
                     title = " ".join(a.get_text(strip=True).split())
-                    href = a["href"]
-                    
-                    if not title or len(title) < 10:  # Skip short/empty titles
+                    if not title or len(title) < 8:
                         continue
-                    
-                    # Ensure absolute URL
-                    if not href.startswith("http"):
-                        if href.startswith("/"):
-                            href = "https://www.bydglobal.com" + href
-                        else:
-                            href = "https://www.bydglobal.com/" + href
-                    
-                    # Check for monthly keywords (broader matching)
+                        
+                    # Match monthly production/sales announcements
                     is_monthly = (
                         "PRODUCTION AND SALES VOLUME" in title.upper()
-                        or re.search(r"(產銷快報|产销快报)", title)
-                        or "MONTHLY RETURN" in title.upper()
-                        or "月度产销" in title
+                        or re.search(r"(產銷快報|产销快报|月度产销)", title)
                         or ("2025" in title and "august" in title.lower())
-                        or ("2025年8月" in title)
-                        or ("announcement" in title.lower() and "sales" in title.lower())
                     )
                     
                     if is_monthly:
-                        self.logger.info(f"✅ MATCHED BYD IR announcement: {title}")
+                        href = a["href"]
+                        if not href.startswith("http"):
+                            href = "https://www.bydglobal.com" + href
+                            
+                        self.logger.info(f"✅ MATCHED BYD IR: {title}")
                         hits.append({
-                            'announcementTitle': title,
-                            'adjunctUrl': href,
-                            'content': '',  # Will be fetched if needed
-                            'publishDate': datetime.now().strftime('%Y-%m-%d'),
-                            'lang': 'EN',
-                            'source': 'BYD_IR'
+                            "announcementTitle": title,
+                            "adjunctUrl": href,
+                            "content": "",  # Will be fetched from PDF
+                            "publishDate": "",  # Unknown from this page
+                            "lang": "EN", 
+                            "source": "BYD_IR",
                         })
+                        
+                if hits:
+                    break  # Found announcements, no need to try other URLs
                     
             except Exception as e:
-                self.logger.warning(f"Failed to fetch BYD IR {url}: {e}")
-                continue  # Try next URL
-        
-        # TEMPORARY: Add a mock announcement if we can't find real ones (for testing)
-        if len(hits) == 0:  # Always for testing - remove this condition in production
-            self.logger.info("🧪 TEMP: Adding mock August 2025 announcement for testing")
-            mock_announcement = {
-                'announcementTitle': 'VOLUNTARY ANNOUNCEMENT – PRODUCTION AND SALES VOLUME FOR AUGUST 2025',
-                'adjunctUrl': 'https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0901/01211_august2025.pdf',
-                'content': '''BYD COMPANY LIMITED announces production and sales data for 2025年8月.
+                self.logger.warning(f"Failed to fetch announcements from {url}: {e}")
+                continue
                 
-                总销量约为370,854台，其中新能源汽车销量约为370,854台
-                纯电动汽车销量约为148,470台
-                插电式混合动力汽车销量约为222,384台
-                
-                本公司汽车累计销量约为2,417,804台，同比增长约28.8%''',
-                'publishDate': '2025-09-01',
-                'lang': 'EN',
-                'source': 'BYD_MOCK_TEMP'
-            }
-            hits.append(mock_announcement)
-            self.logger.info("🎯 Added temporary mock announcement - remove this in production!")
+# Removed temporary mock - now using real server-rendered HKEX discovery
         
-        self.logger.info(f"Found {len(hits)} BYD announcements from BYD IR (including {len([h for h in hits if h.get('source') == 'BYD_MOCK_TEMP'])} mock)")
+        self.logger.info(f"BYD IR hits: {len(hits)}")
         return hits
+    
+    def _follow_to_pdf_and_extract(self, announcement: Dict) -> Optional[Dict]:
+        """
+        Follow through to final PDF and extract text content.
+        
+        If URL is HKEX HTML announcement, find PDF link and follow it.
+        If URL is already PDF, extract text directly.
+        Returns enriched announcement with content or None if failed.
+        """
+        url = announcement.get('adjunctUrl', '')
+        if not url:
+            return announcement
+            
+        self.logger.info(f"📄 Following through: {url[:60]}...")
+        
+        try:
+            # Try to fetch the URL
+            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+            response.raise_for_status()
+            
+            # Check if this is already a PDF
+            content_type = response.headers.get('content-type', '').lower()
+            is_pdf = 'pdf' in content_type or url.lower().endswith('.pdf')
+            
+            if is_pdf:
+                # Extract text from PDF
+                self.logger.info("📄 Extracting text from PDF...")
+                pdf_text = self._extract_pdf_text(response.content)
+                if pdf_text:
+                    announcement['content'] = pdf_text
+                    self.logger.info(f"📄 Extracted {len(pdf_text)} chars from PDF")
+                else:
+                    self.logger.warning("📄 PDF text extraction failed")
+                return announcement
+                
+            else:
+                # This is HTML - look for PDF links
+                soup = BeautifulSoup(response.text, "html.parser")
+                pdf_links = []
+                
+                # Find all links that might be PDFs
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    link_text = a.get_text(strip=True)
+                    
+                    # Check if this looks like a PDF link
+                    is_pdf_link = (
+                        href.lower().endswith('.pdf') 
+                        or 'pdf' in href.lower()
+                        or 'announcement' in link_text.lower()
+                        or 'document' in link_text.lower()
+                    )
+                    
+                    if is_pdf_link:
+                        if not href.startswith('http'):
+                            if href.startswith('/'):
+                                href = 'https://www1.hkexnews.hk' + href
+                            else:
+                                base_url = '/'.join(url.split('/')[:-1])
+                                href = base_url + '/' + href
+                        pdf_links.append((href, link_text))
+                
+                # Try the first PDF link found
+                if pdf_links:
+                    pdf_url, pdf_text = pdf_links[0]
+                    self.logger.info(f"📄 Found PDF link: {pdf_url}")
+                    
+                    # Follow to PDF
+                    pdf_response = requests.get(pdf_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+                    pdf_response.raise_for_status()
+                    
+                    # Extract text from PDF
+                    pdf_content = self._extract_pdf_text(pdf_response.content)
+                    if pdf_content:
+                        announcement['content'] = pdf_content
+                        announcement['adjunctUrl'] = pdf_url  # Update to final PDF URL
+                        self.logger.info(f"📄 Extracted {len(pdf_content)} chars from linked PDF")
+                    else:
+                        # Fall back to HTML content if PDF extraction fails
+                        announcement['content'] = soup.get_text()
+                        self.logger.info(f"📄 PDF extraction failed, using HTML text ({len(announcement['content'])} chars)")
+                else:
+                    # No PDF found, use HTML content
+                    announcement['content'] = soup.get_text()  
+                    self.logger.info(f"📄 No PDF found, using HTML content ({len(announcement['content'])} chars)")
+                    
+                return announcement
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to follow through {url[:50]}: {e}")
+            return announcement  # Return original on failure
+    
+    def _extract_pdf_text(self, pdf_content: bytes) -> Optional[str]:
+        """
+        Extract text from PDF content bytes.
+        Uses simple fallback approach - can be enhanced with proper PDF libraries.
+        """
+        try:
+            # Try to use PyMuPDF if available
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(stream=pdf_content, filetype="pdf")
+                text = ""
+                for page in doc:
+                    text += page.get_text()
+                doc.close()
+                return text.strip()
+            except ImportError:
+                pass
+                
+            # Try pdfminer.six if available
+            try:
+                from pdfminer.high_level import extract_text
+                from io import BytesIO
+                text = extract_text(BytesIO(pdf_content))
+                return text.strip()
+            except ImportError:
+                pass
+                
+            # Simple fallback - look for readable text in PDF bytes
+            # This is crude but can catch basic text-based PDFs
+            text_content = pdf_content.decode('latin-1', errors='ignore')
+            
+            # Extract text between common PDF text markers
+            import re
+            text_matches = re.findall(r'\(([^)]+)\)', text_content)
+            if text_matches:
+                extracted = ' '.join(text_matches)
+                # Filter out garbage and keep only meaningful text
+                meaningful = re.sub(r'[^\w\s\u4e00-\u9fff.,()%:：\-—]+', ' ', extracted)
+                if len(meaningful) > 100:  # Only return if we got substantial text
+                    return meaningful.strip()
+                    
+            self.logger.warning("📄 No PDF libraries available and fallback extraction found insufficient text")
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"📄 PDF text extraction failed: {e}")
+            return None
     
     def _dedupe_by_url(self, announcements: List[Dict]) -> List[Dict]:
         """
@@ -451,29 +607,34 @@ class BYDSentinel:
         # Extract sales numbers using regex patterns
         # These patterns would need to be refined based on actual BYD report formats
         
-        # Total sales (汽车销量、总销量、總銷量) - support both simplified/traditional
-        total_pattern = r'(?:总销量|總銷量|汽车销量|汽車銷量|总销量约为|總銷量約為)[:：\s]*?约?为?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万|萬)?)(?:辆|台|台|units?)'
-        total_match = re.search(total_pattern, content, re.IGNORECASE)
-        if total_match:
-            data.total_sales = self._parse_number(total_match.group(1))
+        # Extract from Traditional Chinese table format (BYD's actual format)
+        # Look for the table structure with 本月 (current month) sales column
+        
+        # Simplified approach: Extract all comma-formatted numbers and identify them by context
+        all_numbers = re.findall(r'(\d+(?:,\d{3})*)', content)
+        number_values = [self._parse_number(num) for num in all_numbers]
+        
+        self.logger.debug(f"📊 Found numbers in PDF: {all_numbers}")
+        
+        # Context-based extraction: Find sales numbers after key Chinese terms
+        # NEV total after "新能源汽車"
+        nev_context = re.search(r'新能源汽車[\s\S]*?(\d+(?:,\d{3})*)', content)
+        if nev_context:
+            data.total_sales = self._parse_number(nev_context.group(1))
+            data.nev_sales = data.total_sales  # For BYD, NEV = total (no ICE vehicles)
+            self.logger.info(f"✅ Extracted total_sales: {data.total_sales:,}")
             
-        # NEV sales (新能源汽车销量、新能源汽車銷量)
-        nev_pattern = r'(?:新能源汽车销量|新能源汽車銷量)[:：\s]*?约?为?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万|萬)?)(?:辆|台|台|units?)'
-        nev_match = re.search(nev_pattern, content, re.IGNORECASE)
-        if nev_match:
-            data.nev_sales = self._parse_number(nev_match.group(1))
+        # BEV after "純電動"  
+        bev_context = re.search(r'純電動[\s\S]*?(\d+(?:,\d{3})*)', content)
+        if bev_context:
+            data.bev_sales = self._parse_number(bev_context.group(1))
+            self.logger.info(f"✅ Extracted bev_sales: {data.bev_sales:,}")
             
-        # BEV sales (纯电动汽车)
-        bev_pattern = r'纯电动汽车(?:销量)?(?:约为|为)?[:：\s]*?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万)?)(?:辆|台|units?)'
-        bev_match = re.search(bev_pattern, content, re.IGNORECASE)
-        if bev_match:
-            data.bev_sales = self._parse_number(bev_match.group(1))
-            
-        # PHEV sales (混合动力汽车)
-        phev_pattern = r'(?:插电式混合动力|混合动力)汽车(?:销量)?(?:约为|为)?[:：\s]*?(\d+(?:,\d{3})*|\d+(?:\.\d+)?(?:万)?)(?:辆|台|units?)'
-        phev_match = re.search(phev_pattern, content, re.IGNORECASE)
-        if phev_match:
-            data.phev_sales = self._parse_number(phev_match.group(1))
+        # PHEV after "插電式混合動力"
+        phev_context = re.search(r'插電式混合動力[\s\S]*?(\d+(?:,\d{3})*)', content)
+        if phev_context:
+            data.phev_sales = self._parse_number(phev_context.group(1))
+            self.logger.info(f"✅ Extracted phev_sales: {data.phev_sales:,}")
             
         # Year-over-year growth
         yoy_pattern = r'同比(?:增长|上升|增加)(?:约)?(\d+(?:\.\d+)?)%'
@@ -598,27 +759,80 @@ class BYDSentinel:
         try:
             # Use extended date window to account for HKT timezone (UTC+8)
             # When it's morning in US, it might already be evening of next day in HKT
-            extended_days_back = 2  # 48-hour window to catch HKT announcements
-            self.logger.info(f"🕐 Using {extended_days_back}-day window to account for HKT timezone (UTC+8)")
+            # Also need larger window for HKEX probe to catch monthly reports posted on 1st
+            extended_days_back = 7  # 7-day window to catch monthly reports
+            self.logger.info(f"🕐 Using {extended_days_back}-day window to catch monthly reports and HKT timezone (UTC+8)")
             
-            # Fetch announcements from all sources (HKEX titlesearch + BYD IR + CNINFO)
-            hkex_announcements = self.fetch_hkex_announcements(days_back=extended_days_back)
-            byd_ir_announcements = self.fetch_byd_ir_latest()
-            cninfo_announcements = self.fetch_cninfo_announcements(days_back=extended_days_back)
+            # Discovery: CNINFO (primary), HKEX probe (secondary), BYD IR (best-effort)
+            cninfo_hits = self.fetch_cninfo_announcements(days_back=extended_days_back)
+            hkex_hits = self._fetch_hkex_probe(days_back=extended_days_back) 
+            byd_ir_hits = self.fetch_byd_ir_latest()
             
-            # Merge and deduplicate by URL to avoid duplicates
-            all_candidates = hkex_announcements + byd_ir_announcements + cninfo_announcements
-            all_announcements = self._dedupe_by_url(all_candidates)
+            # Merge and deduplicate by URL to avoid duplicates  
+            candidates = self._dedupe_by_url(cninfo_hits + hkex_hits + byd_ir_hits)
             
-            self.logger.info(f"📊 Found {len(hkex_announcements)} HKEX + {len(byd_ir_announcements)} BYD IR + {len(cninfo_announcements)} CNINFO")
-            self.logger.info(f"📊 Total after dedup: {len(all_announcements)} announcements")
+            self.logger.info(f"📊 Discovery: CNINFO={len(cninfo_hits)} HKEX_PROBE={len(hkex_hits)} BYD_IR={len(byd_ir_hits)} total={len(candidates)}")
             
-            # Parse monthly reports
+            # Show first 3 candidates for debugging
+            if candidates:
+                self.logger.info("📋 First 3 candidates:")
+                for i, candidate in enumerate(candidates[:3]):
+                    title = candidate.get('announcementTitle', 'No title')[:80]
+                    url = candidate.get('adjunctUrl', 'No URL')[:60]
+                    source = candidate.get('source', 'Unknown')
+                    self.logger.info(f"  {i+1}. [{source}] {title}... → {url}...")
+            else:
+                self.logger.warning("❌ No discovery candidates found from any source")
+            
+            # Follow through to PDFs and extract content for each candidate
+            all_announcements = []
+            for i, candidate in enumerate(candidates):
+                title = candidate.get('announcementTitle', 'No title')[:60]
+                try:
+                    # Follow through to final PDF if needed and extract content
+                    enriched = self._follow_to_pdf_and_extract(candidate)
+                    if enriched and enriched.get('content'):
+                        chars = len(enriched['content'])
+                        self.logger.info(f"✅ PDF extracted {i+1}/{len(candidates)}: {chars} chars from {title}")
+                        all_announcements.append(enriched)
+                    elif enriched:
+                        self.logger.warning(f"⚠️  PDF follow failed {i+1}/{len(candidates)}: no content from {title}")
+                        all_announcements.append(candidate)  # Keep original
+                    else:
+                        self.logger.warning(f"❌ PDF follow failed {i+1}/{len(candidates)}: {title}")
+                        all_announcements.append(candidate)  # Keep original
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ PDF follow error {i+1}/{len(candidates)}: {title} → {e}")
+                    all_announcements.append(candidate)  # Keep original even if PDF extraction fails
+                    
+            self.logger.info(f"📊 After PDF follow-through: {len(all_announcements)} announcements with content")
+            
+            # Parse monthly reports with explicit skip reasons
             monthly_reports = []
-            for announcement in all_announcements:
+            for i, announcement in enumerate(all_announcements):
+                title = announcement.get('announcementTitle', 'No title')[:60]
+                content = announcement.get('content', '')
+                
+                # Test title filter first
+                if not self._passes_title_filter(announcement):
+                    skip_reason = "title filter failed (no monthly/sales keywords)"
+                    self.logger.info(f"❌ Skip {i+1}/{len(all_announcements)}: {skip_reason} → {title}")
+                    continue
+                
                 monthly_data = self.parse_monthly_sales_report(announcement)
-                if monthly_data:
-                    monthly_reports.append(monthly_data)
+                
+                if not monthly_data:
+                    # Determine specific skip reason
+                    skip_reason = self._diagnose_parse_failure(announcement)
+                    self.logger.info(f"❌ Skip {i+1}/{len(all_announcements)}: {skip_reason} → {title}")
+                    continue
+                
+                # Success - show what was parsed
+                self.logger.info(f"✅ Parsed {i+1}/{len(all_announcements)}: total={monthly_data.total_sales:,} "
+                               f"BEV={monthly_data.bev_sales:,} PHEV={monthly_data.phev_sales:,} "
+                               f"period={monthly_data.period} → {title}")
+                monthly_reports.append(monthly_data)
                     
             results['reports_found'] = len(monthly_reports)
             self.logger.info(f"Parsed {len(monthly_reports)} monthly reports")
