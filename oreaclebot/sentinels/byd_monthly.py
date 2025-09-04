@@ -932,21 +932,45 @@ class BYDSentinel:
             results['reports_found'] = len(monthly_reports)
             self.logger.info(f"Parsed {len(monthly_reports)} monthly reports")
             
-            # Post comments for each report
+            # Post comments for each report with market targeting
             for data in monthly_reports:
                 try:
-                    comment_text = self.create_monthly_comment(data)
+                    # Find matching markets based on configured targets
+                    matching_markets = self._find_matching_markets(data)
                     
-                    if dry_run:
-                        self.logger.info(f"DRY RUN - BYD monthly comment: {comment_text[:200]}...")
+                    if matching_markets:
+                        self.logger.info(f"📊 Found {len(matching_markets)} matching market targets")
+                        
+                        # Post to each matching market with targeted comment
+                        for target in matching_markets:
+                            comment_text = self._generate_market_comment(data, target)
+                            
+                            if dry_run:
+                                self.logger.info(f"DRY RUN - Targeted comment: {comment_text[:200]}...")
+                            else:
+                                # Post to provided market_ids (user must supply real market IDs)
+                                if market_ids:
+                                    for market_id in market_ids:
+                                        comment = Comment(contractId=market_id, markdown=comment_text)
+                                        response = self.client.post_comment(comment)
+                                        self.logger.info(f"Posted targeted BYD comment to {market_id}")
+                                        results['comments_posted'] += 1
+                                else:
+                                    self.logger.warning("No market IDs provided for targeted posting")
                     else:
-                        # Post to specified markets
-                        if market_ids:
-                            for market_id in market_ids:
-                                comment = Comment(contractId=market_id, markdown=comment_text)
-                                response = self.client.post_comment(comment)
-                                self.logger.info(f"Posted BYD monthly comment to market {market_id}")
-                                results['comments_posted'] += 1
+                        # Fallback: Use generic comment if no targets match
+                        comment_text = self.create_monthly_comment(data)
+                        
+                        if dry_run:
+                            self.logger.info(f"DRY RUN - Generic comment: {comment_text[:200]}...")
+                        else:
+                            # Post to specified markets
+                            if market_ids:
+                                for market_id in market_ids:
+                                    comment = Comment(contractId=market_id, markdown=comment_text)
+                                    response = self.client.post_comment(comment)
+                                    self.logger.info(f"Posted generic BYD comment to {market_id}")
+                                    results['comments_posted'] += 1
                                 
                     # Log to spreadsheet
                     self.log_to_spreadsheet(data)
