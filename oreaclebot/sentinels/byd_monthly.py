@@ -743,6 +743,96 @@ class BYDSentinel:
         except Exception as e:
             self.logger.error(f"Failed to log BYD data to spreadsheet: {e}")
     
+    def _load_market_targets(self) -> List[Dict]:
+        """Load market targeting configuration from phrasebook.yml."""
+        try:
+            # Look for phrasebook.yml in current directory or parent directories
+            for path in ["./phrasebook.yml", "../phrasebook.yml", "../../phrasebook.yml"]:
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        config = yaml.safe_load(f)
+                        targets = config.get('targets', [])
+                        self.logger.info(f"📋 Loaded {len(targets)} market targets from {path}")
+                        return targets
+            
+            self.logger.warning("📋 No phrasebook.yml found - market targeting disabled")
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load phrasebook: {e}")
+            return []
+    
+    def _find_matching_markets(self, monthly_data: BYDMonthlyData) -> List[Dict]:
+        """Find markets that match the BYD data based on configured targets."""
+        matching_markets = []
+        
+        for target in self.targets:
+            try:
+                # Check if this target matches our data
+                title_regex = target.get('title_regex', '')
+                guard_condition = target.get('guard', '')
+                
+                # For now, assume market title matches the regex pattern
+                # In production, you'd match against actual market titles from Manifold API
+                
+                # Test the guard condition with our data
+                if guard_condition:
+                    # Replace variables in guard condition
+                    guard = guard_condition.format(
+                        bev_sales=monthly_data.bev_sales,
+                        nev_sales=monthly_data.nev_sales,
+                        phev_sales=monthly_data.phev_sales,
+                        total_sales=monthly_data.total_sales
+                    )
+                    
+                    # For safety, only evaluate simple comparison expressions
+                    if self._evaluate_guard_safely(guard):
+                        matching_markets.append(target)
+                        self.logger.info(f"✅ Market match: {target.get('owner', 'Unknown')}/{title_regex[:50]}")
+                    else:
+                        self.logger.debug(f"❌ Guard failed: {guard}")
+                        
+            except Exception as e:
+                self.logger.error(f"Error evaluating target: {e}")
+                
+        return matching_markets
+    
+    def _evaluate_guard_safely(self, guard: str) -> bool:
+        """Safely evaluate a guard condition (only simple comparisons allowed)."""
+        try:
+            # Only allow simple numeric comparisons for security
+            import ast
+            import operator
+            
+            # Parse and evaluate the expression
+            node = ast.parse(guard, mode='eval')
+            
+            # Only allow Compare nodes with numeric literals
+            if isinstance(node.body, ast.Compare):
+                return eval(compile(node, '<string>', 'eval'))
+                
+        except:
+            pass
+            
+        return False
+    
+    def _generate_market_comment(self, monthly_data: BYDMonthlyData, target: Dict) -> str:
+        """Generate a comment for a specific market target."""
+        comment_template = target.get('comment', '')
+        
+        try:
+            return comment_template.format(
+                bev_sales=monthly_data.bev_sales,
+                nev_sales=monthly_data.nev_sales,
+                phev_sales=monthly_data.phev_sales,
+                total_sales=monthly_data.total_sales,
+                source_url=monthly_data.source_url,
+                period=monthly_data.period
+            )
+        except Exception as e:
+            self.logger.error(f"Error formatting comment: {e}")
+            return f"BYD {monthly_data.period} sales data: BEV {monthly_data.bev_sales:,}, Total {monthly_data.total_sales:,}"
+    
     def run_monthly_check(self, market_ids: List[str] = None, 
                          dry_run: bool = True) -> Dict[str, Any]:
         """
