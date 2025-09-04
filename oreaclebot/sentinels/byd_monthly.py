@@ -848,7 +848,7 @@ class BYDSentinel:
                         # Post to specified markets
                         if market_ids:
                             for market_id in market_ids:
-                                comment = Comment(contractId=market_id, content=comment_text)
+                                comment = Comment(contractId=market_id, markdown=comment_text)
                                 response = self.client.post_comment(comment)
                                 self.logger.info(f"Posted BYD monthly comment to market {market_id}")
                                 results['comments_posted'] += 1
