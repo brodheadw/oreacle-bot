@@ -8,6 +8,8 @@ particularly focusing on NEV (New Energy Vehicle) sales and production data.
 import logging
 import re
 import requests
+import yaml
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import json
@@ -102,6 +104,9 @@ class BYDSentinel:
         # BYD identifiers
         self.hk_stock_code = "01211"  # HKEXnews
         self.sz_stock_code = "002594"  # CNINFO
+        
+        # Load market targeting configuration from phrasebook
+        self.targets = self._load_market_targets()
         
     def fetch_hkex_announcements(self, days_back: int = 7) -> List[Dict]:
         """
