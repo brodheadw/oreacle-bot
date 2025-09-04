@@ -119,3 +119,13 @@ traditional_zh:
   - 開採
   - 續期
   - 換發
+
+# BYD market targeting configuration
+targets:
+  - owner: "MikhailTal"
+    title_regex: "BYD August BEV sales exceed (?P<thresh>\\d{3},?\\d{3})\\??"
+    guard: "{bev_sales} > int(thresh.replace(',', ''))"
+    comment: |
+      BYD's August 2025 BEV (乘用车-纯电动) sales: {bev_sales:,}.
+      Source (official filing): {source_url}
+      (Totals: NEV {nev_sales:,}; BEV {bev_sales:,}; PHEV {phev_sales:,})
